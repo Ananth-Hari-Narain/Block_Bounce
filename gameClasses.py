@@ -66,6 +66,7 @@ class Player(MySprite):
             # (away from the edge)
             for i in range(4):
                 clipped = self.rect.clipline(obj.sides[i])
+
                 if clipped:
                     # Checking collision with top side of platform (the floor for the player)
                     if i == 0:
@@ -75,8 +76,6 @@ class Player(MySprite):
                             self.ySpeed = 0
                             self.isGrounded = True
                             diff_in_y_coord = self.rect.bottomright[1] - clipped[0][1]
-                            if obj in all_moving_platforms:
-                                self.rect.move_ip(obj.velocity)
 
                         else:
                             diff_in_y_coord = 0
@@ -121,6 +120,12 @@ class Player(MySprite):
                             else:
                                 self.take_damage()
                                 pygame.time.set_timer(self.invulnerable_event, 125, 16)
+
+            # See if the player is colliding with a moving platform
+            if obj in all_moving_platforms:
+                # Check if player is 1 or 2 pixels above platform
+                if self.rect.colliderect(obj.movement_rect):
+                    self.rect.move_ip(obj.velocity)
 
 
         # This is the collision detection algorithm for the player with semi-solid platforms
@@ -402,11 +407,18 @@ class SemiSolidPlatform(MySprite):
 
 
 class MovingPlatform(Platform):
-    def __init__(self, size, colour, start_point: tuple[int,int], end_point: tuple[int, int]):
+    def __init__(self, size, colour, start_point: tuple[int, int], end_point: tuple[int, int]):
         super().__init__(size, colour, start_point)
-
         self.rect.center = start_point
         self.set_sides()
+
+        # The below field is used to ensure the player moves with the platform
+        # It is 1 pixel above the actual platform and only 1 pixel thick
+        self.movement_rect = self.rect.copy()
+        self.movement_rect.height = 1
+        self.movement_rect.width -= 2
+        self.movement_rect.topleft = (self.rect.left + 1, self.rect.top - 1)
+
         self.internal_timer = 0
         self.path = (start_point, end_point)
         self.dest = 0
@@ -447,15 +459,5 @@ class MovingPlatform(Platform):
         # If the platform needs to get moving
         else:
             self.rect.move_ip(self.velocity)
+            self.movement_rect.move_ip(self.velocity)
             self.set_sides()
-
-
-
-
-
-
-
-
-
-
-
