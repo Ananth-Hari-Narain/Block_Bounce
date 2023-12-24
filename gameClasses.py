@@ -1,3 +1,5 @@
+import math
+
 import pygame
 from math import cos, sin
 
@@ -144,10 +146,6 @@ class Enemy(MySprite):
         super().__init__(size, colour, initialPos)
         self.horizontal_speed = 1
         self.VERTICAL_SPEED = 0
-
-    # Used for moving some units in the x-axis
-    def move(self, distance):
-        pass
 
 
 class Platform(MySprite):
@@ -301,6 +299,41 @@ class Fool(Enemy):
         self.rect.move_ip(self.horizontal_speed, self.vertical_speed)
         self.collide_with_platforms(all_platforms, all_semi_solid_platforms)
 
+class GhostPursuer(Enemy):
+    """
+    This class consists of an enemy that can travel through walls and platforms.
+    They will always pursue the player but very slowly.
+    They do not interact with other enemies.
+    When they damage the player, they disappear
+    """
+    def __init__(self, initialPos):
+        # The ghost starts fully transparent
+        GHOST_RADIUS = 10
+        super().__init__((20, 20), (0, 0, 0, 255), initialPos)
+        pygame.draw.circle(self.image, (255, 0, 0, 50), (GHOST_RADIUS, GHOST_RADIUS), GHOST_RADIUS)
+        self.collision_rect = self.rect.copy()
+        self.collision_rect.scale_by_ip(0.8, 0.8)
+
+    def update(self, player_position: tuple):
+        # Calculate difference between x and difference between y
+        diff_in_x = player_position[0] - self.rect.centerx
+        diff_in_y = player_position[1] - self.rect.centery
+        translation = pygame.Vector2()
+
+        translation.x = diff_in_x // 20
+        if 1 < diff_in_x < 20:
+            translation.x = 1
+        elif -1 > diff_in_x > -20:
+            translation.x = -1
+
+        translation.y = diff_in_y // 20
+        if 1 < diff_in_y < 20:
+            translation.y = 1
+        elif -1 > diff_in_y > -20:
+            translation.y = -1
+
+        self.rect.move_ip(translation)
+        self.collision_rect.move_ip(translation)
 
 class Spikes(Platform):
     """

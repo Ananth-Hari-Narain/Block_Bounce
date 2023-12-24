@@ -29,8 +29,9 @@ platform4 = SemiSolidPlatform((80, 10), (60, 210))
 spikes = Spikes(8, 20, (150, 100), 0)
 
 fool1 = Fool((200, 0))
+pursuer1 = GhostPursuer((10, 90))
 all_enemies = pygame.sprite.Group()
-all_enemies.add(fool1)
+all_enemies.add(fool1, pursuer1)
 
 playerHealthIcon = pygame.transform.scale(player.image, (15, 15))
 
@@ -171,6 +172,11 @@ while game_is_running:
                     enemy.become_squished()
                     enemy.internal_timer = 0
 
+        if type(enemy) is GhostPursuer:
+            enemy.update(player.rect.center)
+            if player.rect.colliderect(enemy.collision_rect) and player.iframes_left == 0:
+                player.take_damage()
+                enemy.kill()
 
     #### Collision detection ####
     player.collision_update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
