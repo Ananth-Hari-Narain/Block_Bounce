@@ -20,23 +20,25 @@ pygame.display.set_caption("Game")
 
 # Set up game stuff here
 player_is_invulnerable = pygame.USEREVENT + 1
-player = Player((32, 32), BLUE, player_is_invulnerable, (0, 200))
+player = Player((32, 32), BLUE, player_is_invulnerable, (40, 200))
 platform = Platform((408, 200), GREEN, (-4, 300))
-# platform2 = MySprite((80, 10), GREEN, initialPos=(150, 100))
+wall = Platform((30, SCREENHEIGHT), GREEN, (0, 0))
 platform3 = MovingPlatform((80, 15), GREEN, (210, 210), (300, 210))
 platform4 = SemiSolidPlatform((80, 10), (60, 210))
 
 spikes = Spikes(8, 20, (150, 100), 0)
 
-fool1 = Fool((200, 0))
+fool1 = Fool((200, 300))
 pursuer1 = GhostPursuer((10, 90))
 all_enemies = pygame.sprite.Group()
 all_enemies.add(fool1, pursuer1)
 
+respawn_point = (60, 100)
+
 playerHealthIcon = pygame.transform.scale(player.image, (15, 15))
 
 # Using lists for all_platforms in order to avoid having to create MULTIPLE variables
-all_platforms = [platform, spikes, platform3]
+all_platforms = [platform, spikes, platform3, wall]
 all_semi_solid_platforms = [platform4]
 all_moving_platforms = [platform3]
 
@@ -126,8 +128,9 @@ while game_is_running:
         player.xSpeed = 0
 
     if player.rect.y > SCREENHEIGHT:
-        player.rect.y = SCREENHEIGHT
-        player.ySpeed = 0
+        player.rect.topleft = respawn_point
+        player.take_damage()
+
 
     if player.isSpinning:
         player.xSpeed = 0
