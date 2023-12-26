@@ -23,12 +23,13 @@ player_is_invulnerable = pygame.USEREVENT + 1
 player = Player((32, 32), BLUE, player_is_invulnerable, (40, 200))
 platform = Platform((408, 200), GREEN, (-4, 300))
 wall = Platform((30, SCREENHEIGHT), GREEN, (0, 0))
+wall2 = Platform((30, SCREENHEIGHT), GREEN, (SCREENWIDTH-10, 0))
 platform3 = MovingPlatform((80, 15), GREEN, (210, 210), (300, 210))
 platform4 = SemiSolidPlatform((80, 10), (60, 210))
 
 spikes = Spikes(8, 20, (150, 100), 0)
 
-fool1 = Fool((200, 300))
+fool1 = JumpingFool((200, 300))
 pursuer1 = GhostPursuer((10, 90))
 all_enemies = pygame.sprite.Group()
 all_enemies.add(fool1, pursuer1)
@@ -38,7 +39,7 @@ respawn_point = (60, 100)
 playerHealthIcon = pygame.transform.scale(player.image, (15, 15))
 
 # Using lists for all_platforms in order to avoid having to create MULTIPLE variables
-all_platforms = [platform, spikes, platform3, wall]
+all_platforms = [platform, spikes, platform3, wall, wall2]
 all_semi_solid_platforms = [platform4]
 all_moving_platforms = [platform3]
 
@@ -154,10 +155,10 @@ while game_is_running:
 
     #### Enemy logic ####
     for enemy in all_enemies:
-        if type(enemy) is Fool:
+        if type(enemy) is Fool or type(enemy) is JumpingFool:
             # Logic for fools - check the fool class
             if not enemy.isBeingSquished:
-                enemy.update(all_platforms, all_semi_solid_platforms)
+                enemy.update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
 
                 # Check for collision with player
                 if enemy.rect.colliderect(player.rect):
@@ -165,15 +166,18 @@ while game_is_running:
                     # If the player is above the enemy's centre
                     if player.rect.bottomleft[1] <= enemy.rect.centery and player.ySpeed > 0:
                         enemy.isBeingSquished = True
+                        if type(enemy) is JumpingFool:
+                            enemy.kill()
 
                     elif player.iframes_left == 0:
                         player.take_damage()
 
             else:
-                enemy.internal_timer += clock.get_time()
-                if enemy.internal_timer >= 0.15:
-                    enemy.become_squished()
-                    enemy.internal_timer = 0
+                if type(enemy) is Fool:
+                    enemy.internal_timer += clock.get_time()
+                    if enemy.internal_timer >= 0.15:
+                        enemy.become_squished()
+                        enemy.internal_timer = 0
 
         if type(enemy) is GhostPursuer:
             enemy.update(player.rect.center)

@@ -230,7 +230,7 @@ class Fool(Enemy):
             # Once the enemy is "dead", it is removed from all the groups
             self.kill()
 
-    def collide_with_platforms(self, all_platforms, all_semi_solid_platforms):
+    def collide_with_platforms(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
         """
         This function resolves collisions between the player and ordinary platforms
         and does not include interactions between the enemy and the player.
@@ -290,14 +290,19 @@ class Fool(Enemy):
                                 self.rect.move_ip(-diff_in_x_coord - 1, 0)
                                 self.horizontal_speed = 2
 
+                # See if the enemy is colliding with a moving platform
+                if currentPlatform in all_moving_platforms:
+                    # Check if enemy is 1 or 2 pixels above platform
+                    if self.rect.colliderect(currentPlatform.movement_rect):
+                        self.rect.move_ip(currentPlatform.velocity)
 
-    def update(self, all_platforms, all_semi_solid_platforms) -> None:
+    def update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms) -> None:
         """
         This is a simple function that contains the main logic of the Fool
         but does not include interactions with the player (that's in main.py)
         """
         self.rect.move_ip(self.horizontal_speed, self.vertical_speed)
-        self.collide_with_platforms(all_platforms, all_semi_solid_platforms)
+        self.collide_with_platforms(all_platforms, all_semi_solid_platforms, all_moving_platforms)
 
 class GhostPursuer(Enemy):
     """
@@ -334,6 +339,94 @@ class GhostPursuer(Enemy):
 
         self.rect.move_ip(translation)
         self.collision_rect.move_ip(translation)
+
+class JumpingFool(Enemy):
+    def __init__(self, initialPos):
+        super().__init__((20,20), (255, 0, 0), initialPos)
+        self.vertical_speed = 0
+        self.isBeingSquished = False  # Might add squishing later or remove it entirely
+        self.x_speed = 0
+        self.MAX_VERTICAL_SPEED = 10
+
+    def collide_with_platforms(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
+        """
+        This function resolves collisions between the enemy and platforms
+        and does not include interactions between the enemy and the player.
+        This function helps to simplify the game loop code in JumpingFool.update()
+        :param all_platforms: The list that all platforms are in
+        :param all_semi_solid_platforms: The list all semi_solid platforms are in
+        """
+        # Check if the enemy is falling
+        all_platform_rects = [obj.rect for obj in (all_platforms + all_semi_solid_platforms)]
+        colliding_platform_indices = self.rect.collidelistall(all_platform_rects)
+
+        if len(colliding_platform_indices) == 0:
+            self.vertical_speed += 0.3
+            if self.vertical_speed > self.MAX_VERTICAL_SPEED:
+                self.vertical_speed = self.MAX_VERTICAL_SPEED
+
+        # Then check if the enemy is walking into a wall
+        # If the enemy is in collision with ANYTHING
+        else:
+            # This is a near identical version of the player collision testing
+            for index in colliding_platform_indices:
+                currentPlatform = all_platform_rects[index]
+
+                # Top, left, right and bottom
+                platform_lines = [
+                    (currentPlatform.topleft, currentPlatform.topright),
+                    (currentPlatform.topleft, currentPlatform.bottomleft),
+                    (currentPlatform.topright, currentPlatform.bottomright),
+                    (currentPlatform.bottomright, currentPlatform.bottomleft)
+                ]
+
+                for i in [0, 1, 2, 3]:
+                    temp_clipped = self.rect.clipline(platform_lines[i])
+
+                    if temp_clipped:
+                        # Checking collision with top side of platform (the floor for the enemy)
+                        if i == 0:
+                            # Stops the enemy if they are falling onto the platform
+                            self.vertical_speed = 0
+                            diff_in_y_coord = self.rect.bottomright[1] - temp_clipped[0][1]
+                            self.rect.move_ip(0, -diff_in_y_coord)
+
+                            # Initiate jump again
+                            self.vertical_speed = -8
+
+                        # Checking collision with left side of platform
+                        # If the player is resting on the corner of the platform,
+                        #   we want to ignore the collision with the left and right sides
+                        elif i == 1:
+                            if self.rect.bottomleft[1] - 1 > currentPlatform.topleft[1]:
+                                diff_in_x_coord = self.rect.topright[0] - temp_clipped[0][0]
+                                self.rect.move_ip(-diff_in_x_coord - 1, 0)
+                                self.horizontal_speed = -2
+
+
+                        # Checking collision with right side of platform
+                        elif i == 2:
+                            if self.rect.bottomright[1] - 1 > currentPlatform.topright[1]:
+                                diff_in_x_coord = self.rect.topleft[0] - temp_clipped[0][0]
+                                self.rect.move_ip(-diff_in_x_coord - 1, 0)
+                                self.horizontal_speed = 2
+
+                        # Checking collision with bottom side of platform
+                        elif i == 3:
+                            self.vertical_speed = 0
+                            diff_in_y_coord = temp_clipped[0][1] - self.rect.topright[1]
+                            self.rect.move_ip(0, diff_in_y_coord + 2)
+
+                # See if the enemy is colliding with a moving platform
+                if currentPlatform in all_moving_platforms:
+                    # Check if enemy is 1 or 2 pixels above platform
+                    if self.rect.colliderect(all_platforms[index].movement_rect):
+                        self.rect.move_ip(all_platforms[index].velocity)
+
+    def update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
+        self.rect.move_ip(self.horizontal_speed, self.vertical_speed)
+        self.collide_with_platforms(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+
 
 class Spikes(Platform):
     """
