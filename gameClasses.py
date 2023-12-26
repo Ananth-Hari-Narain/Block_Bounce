@@ -14,7 +14,135 @@ class MySprite(pygame.sprite.Sprite):
     def draw(self, screen: pygame.Surface):
         screen.blit(self.image, self.rect.topleft)
 
-class Player(MySprite):
+class CollisionCharacter(MySprite):
+    """
+    Characters with programmed collision
+    """
+    def __init__(self, size: tuple, colour, initialPos=(0, 0)):
+        super().__init__(size, colour, initialPos)
+        self.xSpeed = 1
+        self.ySpeed = 0
+        self.isGrounded: bool = False
+
+    def fall(self, *args, **kwargs):
+        pass
+
+    def on_top_collision(self, *args, **kwargs):
+        """
+        What happens when character lands on top of a platform
+        """
+        pass
+
+    def on_left_collision(self, *args, **kwargs):
+        """
+        What happens when character collides with the left of a platform
+        """
+        pass
+
+    def on_right_collision(self, *args, **kwargs):
+        """
+        What happens when character collides with the right of a platform
+        """
+        pass
+
+    def on_bottom_collision(self, *args, **kwargs):
+        """
+        What happens when character collides with the bottom of a platform
+        """
+        pass
+
+    def on_spike_collision(self, *args, **kwargs):
+        pass
+
+    def collision_update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
+        if (self.rect.collidelist([obj.rect for obj in all_platforms]) == -1 and
+                self.rect.collidelist([obj.rect for obj in all_semi_solid_platforms]) == -1):
+            self.isGrounded = False
+
+        # Make sure that the character is falling if they are in the air
+        if not self.isGrounded:
+            self.fall()
+
+        # This is the main collision detection algorithm for a character with regular platforms
+        for obj in all_platforms:
+            # Platform Lines format: top, left, right, bottom
+            # We need to split the platform into edges so that we can push the player into the correct direction
+            # (away from the edge)
+            for i in range(4):
+                clipped = self.rect.clipline(obj.sides[i])
+
+                if clipped:
+                    # Checking collision with top side of platform (the floor for the character)
+                    if i == 0:
+                        # Only stops the character if they are falling onto the platform
+                        # and if the character's centre is above the platform
+                        if self.ySpeed > 0 and self.rect.centery <= obj.rect.topleft[1]:
+                            self.ySpeed = 0
+                            self.isGrounded = True
+                            diff_in_y_coord = self.rect.bottomright[1] - clipped[0][1]
+                            # Now do anything extra that is required for the specific character
+                            self.on_top_collision()
+
+                        else:
+                            diff_in_y_coord = 0
+
+                        self.rect.move_ip(0, -diff_in_y_coord)
+
+
+                    # Checking collision with left side of platform
+                    # If the character is resting on the corner of the platform or jumping from below,
+                    # we want to ignore the collision with the left and right sides
+                    elif i == 1:
+                        if (self.rect.bottom - 1 > obj.rect.top
+                                and self.rect.top < obj.rect.bottom - 3):
+                            diff_in_x_coord = self.rect.topright[0] - clipped[0][0]
+                            self.rect.move_ip(-diff_in_x_coord - 1, 0)
+                            self.xSpeed = 0
+                            self.on_left_collision()
+
+
+                    # Checking collision with right side of platform
+                    elif i == 2:
+                        if (self.rect.bottom - 1 > obj.rect.top
+                                and self.rect.top < obj.rect.bottom - 3):
+                            diff_in_x_coord = self.rect.topleft[0] - clipped[0][0]
+                            self.rect.move_ip(-diff_in_x_coord + 1, 0)
+                            self.xSpeed = 0
+                            self.on_right_collision()
+
+                    # Checking collision with bottom side of platform
+                    elif i == 3:
+                        self.ySpeed = 0
+                        diff_in_y_coord = clipped[0][1] - self.rect.topright[1]
+                        self.rect.move_ip(0, diff_in_y_coord + 2)
+                        self.on_bottom_collision()
+
+                    # Deal with spikes for the character
+                    if type(obj) is Spikes:
+                        if obj.spiky_side == i:
+                            self.on_spike_collision(isTopSide=i == 0, platform=obj)
+
+            # See if character player is colliding with a moving platform
+            if obj in all_moving_platforms:
+                # Check if character is 1 pixel above platform
+                if self.rect.colliderect(obj.movement_rect):
+                    self.rect.move_ip(obj.velocity)
+
+
+        # This is the collision detection algorithm for a character with semi-solid platforms
+        for obj in all_semi_solid_platforms:
+            clipped = self.rect.clipline(obj.top_side)
+            # If there is a collision
+            if clipped:
+                # Check if the character was above the platform on the previous frame
+                if self.rect.bottomleft[1] - self.ySpeed <= obj.top_side[0][1]:
+                    self.rect.y += obj.top_side[0][1] - self.rect.bottomleft[1]
+                    self.isGrounded = True
+                    self.ySpeed = 0
+                    self.on_top_collision()
+
+
+class Player(CollisionCharacter):
     # Some constants for the player
     def __init__(self, size: tuple, colour, is_invulnerable_eventID, initialPos):
         super().__init__(size, colour, initialPos)
@@ -49,97 +177,27 @@ class Player(MySprite):
         if not self.is_invisible:
             super().draw(screen)
 
-    def collision_update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
-        if (self.rect.collidelist([obj.rect for obj in all_platforms]) == -1 and
-                self.rect.collidelist([obj.rect for obj in all_semi_solid_platforms]) == -1):
-            self.isGrounded = False
+    def on_top_collision(self, *args, **kwargs):
+        # The only extra thing the player needs to do is reset
+        # the canGroundPound flag
+        self.canGroundPound = True
 
-        # Make sure that the player is falling if they are in the air
-        if not self.isGrounded:
-            # Remember that down on the y-axis is positive and the top of the screen is (0,0)
-            self.ySpeed += 0.3
-            if self.ySpeed > self.max_vertical_speed:
-                self.ySpeed = self.max_vertical_speed
+    def on_spike_collision(self, *args, **kwargs):
+        if self.iframes_left == 0:
+            # Deal with the special case of the top side
+            if kwargs['isTopSide']:
+                if kwargs['platform'].rect.topleft[0] < self.rect.centerx < kwargs['platform'].rect.topright[0]:
+                    self.take_damage()
+                    pygame.time.set_timer(self.invulnerable_event, 125, 16)
+            else:
+                self.take_damage()
+                pygame.time.set_timer(self.invulnerable_event, 125, 16)
 
-        # This is the main collision detection algorithm for the player with regular platforms
-        for obj in all_platforms:
-            # Platform Lines format: top, left, right, bottom
-            # We need to split the platform into edges so that we can push the player into the correct direction
-            # (away from the edge)
-            for i in range(4):
-                clipped = self.rect.clipline(obj.sides[i])
-
-                if clipped:
-                    # Checking collision with top side of platform (the floor for the player)
-                    if i == 0:
-                        # Only stops the player if they are falling onto the platform
-                        # and if the player's centre is above the platform
-                        if self.ySpeed > 0 and self.rect.centery + 8 <= obj.rect.topleft[1]:
-                            self.ySpeed = 0
-                            self.isGrounded = True
-                            diff_in_y_coord = self.rect.bottomright[1] - clipped[0][1]
-
-                        else:
-                            diff_in_y_coord = 0
-
-                        self.rect.move_ip(0, -diff_in_y_coord)
-                        self.canGroundPound = True
-
-
-                    # Checking collision with left side of platform
-                    # If the player is resting on the corner of the platform or jumping from below,
-                    #   we want to ignore the collision with the left and right sides
-                    elif i == 1:
-                        if (self.rect.bottom - 1 > obj.rect.top
-                                and self.rect.top < obj.rect.bottom - 3):
-                            diff_in_x_coord = self.rect.topright[0] - clipped[0][0]
-                            self.rect.move_ip(-diff_in_x_coord - 1, 0)
-                            self.xSpeed = 0
-
-
-                    # Checking collision with right side of platform
-                    elif i == 2:
-                        if (self.rect.bottom - 1 > obj.rect.top
-                                and self.rect.top < obj.rect.bottom - 3):
-                            diff_in_x_coord = self.rect.topleft[0] - clipped[0][0]
-                            self.rect.move_ip(-diff_in_x_coord + 1, 0)
-                            self.xSpeed = 0
-
-                    # Checking collision with bottom side of platform
-                    elif i == 3:
-                        self.ySpeed = 0
-                        diff_in_y_coord = clipped[0][1] - self.rect.topright[1]
-                        self.rect.move_ip(0, diff_in_y_coord + 2)
-
-                    # Damage the player if they are on a spike
-                    if type(obj) is Spikes:
-                        if obj.spiky_side == i and self.iframes_left == 0:
-                            # The top side needs to be dealt with as a special case
-                            if i == 0:
-                                if obj.rect.topleft[0] < self.rect.centerx < obj.rect.topright[0]:
-                                    self.take_damage()
-                                    pygame.time.set_timer(self.invulnerable_event, 125, 16)
-                            else:
-                                self.take_damage()
-                                pygame.time.set_timer(self.invulnerable_event, 125, 16)
-
-            # See if the player is colliding with a moving platform
-            if obj in all_moving_platforms:
-                # Check if player is 1 or 2 pixels above platform
-                if self.rect.colliderect(obj.movement_rect):
-                    self.rect.move_ip(obj.velocity)
-
-
-        # This is the collision detection algorithm for the player with semi-solid platforms
-        for obj in all_semi_solid_platforms:
-            clipped = self.rect.clipline(obj.top_side)
-            # If there is a collision
-            if clipped:
-                # Check if the player was above the platform on the previous frame
-                if self.rect.bottomleft[1] - self.ySpeed <= obj.top_side[0][1]:
-                    self.rect.y += obj.top_side[0][1] - self.rect.bottomleft[1]
-                    self.isGrounded = True
-                    self.ySpeed = 0
+    def fall(self):
+        # Remember that down on the y-axis is positive and the top of the screen is (0,0)
+        self.ySpeed += 0.3
+        if self.ySpeed > self.max_vertical_speed:
+            self.ySpeed = self.max_vertical_speed
 
     def ground_pound(self, clock):
         self.xSpeed = 0
@@ -186,13 +244,6 @@ class Player(MySprite):
 
             self.ySpeed = -1 * self.max_vertical_speed
             self.isGrounded = False
-
-class Enemy(MySprite):
-    def __init__(self, size: tuple, colour, initialPos=(0, 0)):
-        super().__init__(size, colour, initialPos)
-        self.horizontal_speed = 1
-        self.VERTICAL_SPEED = 0
-
 
 class Platform(MySprite):
     def __init__(self, size, colour, position, orientation=0):
@@ -250,7 +301,7 @@ class Platform(MySprite):
                 (temp_rect.bottomright, temp_rect.bottomleft)
             ]
 
-class Fool(Enemy):
+class Fool(CollisionCharacter):
     """
     This class is for the enemy called Fools.
     They are simple enemies: they will continue in 1 direction until they fall off a platform or bump into a wall
@@ -259,11 +310,10 @@ class Fool(Enemy):
     """
     def __init__(self, initialPos):
         super().__init__((20, 20), (255, 0, 0), initialPos)
-        self.horizontal_speed = -2  # It will always start by going left
         self.MAX_VERTICAL_SPEED = 7.5  # Allows Fool to accelerate downwards (not necessary for all enemies)
         self.internal_timer = 0  # Used for squishing animation
-        self.vertical_speed = 0
         self.isBeingSquished = False
+        self.isGrounded = True
 
 
     def become_squished(self) -> None:
@@ -276,81 +326,26 @@ class Fool(Enemy):
             # Once the enemy is "dead", it is removed from all the groups
             self.kill()
 
-    def collide_with_platforms(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
-        """
-        This function resolves collisions between the player and ordinary platforms
-        and does not include interactions between the enemy and the player.
-        This function helps to simplify the game loop code in Fool.update()
-        :param all_platforms: The list that all platforms are in
-        :param all_semi_solid_platforms: The list all semi_solid platforms are in
-        """
-        # Check if the enemy is falling
-        all_platform_rects = [obj.rect for obj in (all_platforms + all_semi_solid_platforms)]
-        colliding_platform_indices = self.rect.collidelistall(all_platform_rects)
+    def fall(self):
+        self.ySpeed += 0.3
+        if self.ySpeed > self.MAX_VERTICAL_SPEED:
+            self.ySpeed = self.MAX_VERTICAL_SPEED
 
-        if len(colliding_platform_indices) == 0:
-            self.vertical_speed += 0.3
-            if self.vertical_speed > self.MAX_VERTICAL_SPEED:
-                self.vertical_speed = self.MAX_VERTICAL_SPEED
+    def on_left_collision(self, *args, **kwargs):
+        self.xSpeed = -2
 
-        # Then check if the enemy is walking into a wall
-        # If the enemy is in collision with ANYTHING
-        else:
-            # This is a near identical version of the player collision testing
-            for index in colliding_platform_indices:
-                currentPlatform = all_platform_rects[index]
-
-                # Top, left, right (bottom not required since Fools can't jump)
-                platform_lines = [
-                    (currentPlatform.topleft, currentPlatform.topright),
-                    (currentPlatform.topleft, currentPlatform.bottomleft),
-                    (currentPlatform.topright, currentPlatform.bottomright)
-
-                ]
-
-                for i in [0, 1, 2]:
-                    temp_clipped = self.rect.clipline(platform_lines[i])
-
-                    if temp_clipped:
-                        # Checking collision with top side of platform (the floor for the player)
-                        if i == 0:
-                            # Only stops the player if they are falling onto the platform
-                            self.vertical_speed = 0
-                            diff_in_y_coord = self.rect.bottomright[1] - temp_clipped[0][1]
-                            self.rect.move_ip(0, -diff_in_y_coord)
-
-                        # Checking collision with left side of platform
-                        # If the player is resting on the corner of the platform,
-                        #   we want to ignore the collision with the left and right sides
-                        elif i == 1:
-                            if self.rect.bottomleft[1] - 1 > currentPlatform.topleft[1]:
-                                diff_in_x_coord = self.rect.topright[0] - temp_clipped[0][0]
-                                self.rect.move_ip(-diff_in_x_coord - 1, 0)
-                                self.horizontal_speed = -2
-
-
-                        # Checking collision with right side of platform
-                        elif i == 2:
-                            if self.rect.bottomright[1] - 1 > currentPlatform.topright[1]:
-                                diff_in_x_coord = self.rect.topleft[0] - temp_clipped[0][0]
-                                self.rect.move_ip(-diff_in_x_coord - 1, 0)
-                                self.horizontal_speed = 2
-
-                # See if the enemy is colliding with a moving platform
-                if currentPlatform in all_moving_platforms:
-                    # Check if enemy is 1 or 2 pixels above platform
-                    if self.rect.colliderect(currentPlatform.movement_rect):
-                        self.rect.move_ip(currentPlatform.velocity)
+    def on_right_collision(self, *args, **kwargs):
+        self.xSpeed = 2
 
     def update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms) -> None:
         """
         This is a simple function that contains the main logic of the Fool
         but does not include interactions with the player (that's in main.py)
         """
-        self.rect.move_ip(self.horizontal_speed, self.vertical_speed)
-        self.collide_with_platforms(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+        self.rect.move_ip(self.xSpeed, self.ySpeed)
+        self.collision_update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
 
-class GhostPursuer(Enemy):
+class GhostPursuer(MySprite):
     """
     This class consists of an enemy that can travel through walls and platforms.
     They will always pursue the player but very slowly.
@@ -386,92 +381,15 @@ class GhostPursuer(Enemy):
         self.rect.move_ip(translation)
         self.collision_rect.move_ip(translation)
 
-class JumpingFool(Enemy):
+class JumpingFool(Fool):
     def __init__(self, initialPos):
-        super().__init__((20,20), (255, 0, 0), initialPos)
-        self.vertical_speed = 0
+        super().__init__(initialPos)
         self.isBeingSquished = False  # Might add squishing later or remove it entirely
-        self.x_speed = 0
         self.MAX_VERTICAL_SPEED = 10
 
-    def collide_with_platforms(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
-        """
-        This function resolves collisions between the enemy and platforms
-        and does not include interactions between the enemy and the player.
-        This function helps to simplify the game loop code in JumpingFool.update()
-        :param all_platforms: The list that all platforms are in
-        :param all_semi_solid_platforms: The list all semi_solid platforms are in
-        """
-        # Check if the enemy is falling
-        all_platform_rects = [obj.rect for obj in (all_platforms + all_semi_solid_platforms)]
-        colliding_platform_indices = self.rect.collidelistall(all_platform_rects)
-
-        if len(colliding_platform_indices) == 0:
-            self.vertical_speed += 0.3
-            if self.vertical_speed > self.MAX_VERTICAL_SPEED:
-                self.vertical_speed = self.MAX_VERTICAL_SPEED
-
-        # Then check if the enemy is walking into a wall
-        # If the enemy is in collision with ANYTHING
-        else:
-            # This is a near identical version of the player collision testing
-            for index in colliding_platform_indices:
-                currentPlatform = all_platform_rects[index]
-
-                # Top, left, right and bottom
-                platform_lines = [
-                    (currentPlatform.topleft, currentPlatform.topright),
-                    (currentPlatform.topleft, currentPlatform.bottomleft),
-                    (currentPlatform.topright, currentPlatform.bottomright),
-                    (currentPlatform.bottomright, currentPlatform.bottomleft)
-                ]
-
-                for i in [0, 1, 2, 3]:
-                    temp_clipped = self.rect.clipline(platform_lines[i])
-
-                    if temp_clipped:
-                        # Checking collision with top side of platform (the floor for the enemy)
-                        if i == 0:
-                            # Stops the enemy if they are falling onto the platform
-                            self.vertical_speed = 0
-                            diff_in_y_coord = self.rect.bottomright[1] - temp_clipped[0][1]
-                            self.rect.move_ip(0, -diff_in_y_coord)
-
-                            # Initiate jump again
-                            self.vertical_speed = -8
-
-                        # Checking collision with left side of platform
-                        # If the player is resting on the corner of the platform,
-                        #   we want to ignore the collision with the left and right sides
-                        elif i == 1:
-                            if self.rect.bottomleft[1] - 1 > currentPlatform.topleft[1]:
-                                diff_in_x_coord = self.rect.topright[0] - temp_clipped[0][0]
-                                self.rect.move_ip(-diff_in_x_coord - 1, 0)
-                                self.horizontal_speed = -2
-
-
-                        # Checking collision with right side of platform
-                        elif i == 2:
-                            if self.rect.bottomright[1] - 1 > currentPlatform.topright[1]:
-                                diff_in_x_coord = self.rect.topleft[0] - temp_clipped[0][0]
-                                self.rect.move_ip(-diff_in_x_coord - 1, 0)
-                                self.horizontal_speed = 2
-
-                        # Checking collision with bottom side of platform
-                        elif i == 3:
-                            self.vertical_speed = 0
-                            diff_in_y_coord = temp_clipped[0][1] - self.rect.topright[1]
-                            self.rect.move_ip(0, diff_in_y_coord + 2)
-
-                # See if the enemy is colliding with a moving platform
-                if currentPlatform in all_moving_platforms:
-                    # Check if enemy is 1 or 2 pixels above platform
-                    if self.rect.colliderect(all_platforms[index].movement_rect):
-                        self.rect.move_ip(all_platforms[index].velocity)
-
-    def update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
-        self.rect.move_ip(self.horizontal_speed, self.vertical_speed)
-        self.collide_with_platforms(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+    def on_top_collision(self, *args, **kwargs):
+        # Initiate jump again
+        self.ySpeed = -8
 
 
 class Spikes(Platform):
