@@ -47,6 +47,57 @@ clock = pygame.time.Clock()
 
 game_is_running = True
 
+def enemy_logic():
+    for enemy in all_enemies:
+        if type(enemy) is Fool or type(enemy) is JumpingFool:
+            # Logic for fools - check the fool class
+            if not enemy.isBeingSquished:
+                enemy.update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+
+                # Check for collision with player
+                if enemy.rect.colliderect(player.rect):
+                    # Now check for where player position is relative to enemy
+                    # If the player is above the enemy's centre
+                    if player.rect.bottomleft[1] <= enemy.rect.centery and player.ySpeed > 0:
+                        enemy.isBeingSquished = True
+                        if type(enemy) is JumpingFool:
+                            enemy.kill()
+
+                    elif player.iframes_left == 0:
+                        player.take_damage()
+
+            else:
+                if type(enemy) is Fool:
+                    enemy.internal_timer += clock.get_time()
+                    if enemy.internal_timer >= 0.15:
+                        enemy.become_squished()
+                        enemy.internal_timer = 0
+
+        if type(enemy) is GhostPursuer:
+            enemy.update(player.rect.center)
+            if player.rect.colliderect(enemy.collision_rect) and player.iframes_left == 0:
+                player.take_damage()
+                enemy.kill()
+
+def display_graphics():
+    # First clear the canvas
+    screen.fill("0xFFFFFF")
+
+    # Now draw all the platforms
+    for obj in all_platforms + all_semi_solid_platforms:
+        obj.draw(screen)
+
+    # And all the enemies
+    for enemy in all_enemies:
+        enemy.draw(screen)
+
+    for i in range(player.health):
+        screen.blit(playerHealthIcon, (30 + i*30, 10))
+
+    # And the player
+    player.draw(screen)
+
+
 #### Main game logic ####
 while game_is_running:
     # Event stuff
@@ -91,33 +142,10 @@ while game_is_running:
 
     # If neither the left/A nor the right/D key is pressed
     else:
-        if player.xSpeed > 0:
-            if player.isGrounded:
-                player.xSpeed -= 0.32  # It takes a little while to fully decelerate
-            else:
-                player.xSpeed -= 0.1
-
-            if player.xSpeed < 0:
-                player.xSpeed = 0
-
-        elif player.xSpeed < 0:
-            if player.isGrounded:
-                player.xSpeed += 0.32
-            else:
-                player.xSpeed += 0.1
-
-            if player.xSpeed > 0:
-                player.xSpeed = 0
+        player.decelerate()
 
     if keys[pygame.K_SPACE]:
-        if player.isGrounded:
-            if pygame.key.get_mods() & KMOD_SHIFT:
-                player.max_vertical_speed = 10
-            else:
-                player.max_vertical_speed = 7.5
-
-            player.ySpeed = -1 * player.max_vertical_speed
-            player.isGrounded = False
+        player.jump(highJump=pygame.key.get_mods() & KMOD_SHIFT)
 
 
     # Prevents the player moving off-screen
@@ -128,62 +156,20 @@ while game_is_running:
         player.rect.x = 0
         player.xSpeed = 0
 
+    # Respawn player
     if player.rect.y > SCREENHEIGHT:
         player.rect.topleft = respawn_point
         player.take_damage()
 
 
     if player.isSpinning:
-        player.xSpeed = 0
-        player.ySpeed = 0
-
-        if player.orientation < 360:
-            player.internalTimer += clock.get_time()
-            if player.internalTimer > 0.02:
-                player.rotate(18)
-        else:
-            player.isSpinning = False
-            player.orientation = 0
-            player.image = player.orig_image
-            player.rect = player.image.get_rect(center=player.rect.center)
-            player.canGroundPound = False
-            player.ySpeed = 8
-            player.max_vertical_speed = 12
+        player.ground_pound(clock)
 
 
     player.rect.move_ip(player.xSpeed, player.ySpeed)
 
     #### Enemy logic ####
-    for enemy in all_enemies:
-        if type(enemy) is Fool or type(enemy) is JumpingFool:
-            # Logic for fools - check the fool class
-            if not enemy.isBeingSquished:
-                enemy.update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
-
-                # Check for collision with player
-                if enemy.rect.colliderect(player.rect):
-                    # Now check for where player position is relative to enemy
-                    # If the player is above the enemy's centre
-                    if player.rect.bottomleft[1] <= enemy.rect.centery and player.ySpeed > 0:
-                        enemy.isBeingSquished = True
-                        if type(enemy) is JumpingFool:
-                            enemy.kill()
-
-                    elif player.iframes_left == 0:
-                        player.take_damage()
-
-            else:
-                if type(enemy) is Fool:
-                    enemy.internal_timer += clock.get_time()
-                    if enemy.internal_timer >= 0.15:
-                        enemy.become_squished()
-                        enemy.internal_timer = 0
-
-        if type(enemy) is GhostPursuer:
-            enemy.update(player.rect.center)
-            if player.rect.colliderect(enemy.collision_rect) and player.iframes_left == 0:
-                player.take_damage()
-                enemy.kill()
+    enemy_logic()
 
     #### Collision detection ####
     player.collision_update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
@@ -191,25 +177,7 @@ while game_is_running:
     for obj in all_moving_platforms:
         obj.update(clock)
 
-
-
-    ##### Drawing stuff #####
-    # First clear the canvas
-    screen.fill("0xFFFFFF")
-
-    # Now draw all the platforms
-    for obj in all_platforms + all_semi_solid_platforms:
-        obj.draw(screen)
-
-    # And all the enemies
-    for enemy in all_enemies:
-        enemy.draw(screen)
-
-    for i in range(player.health):
-        screen.blit(playerHealthIcon, (30 + i*30, 10))
-
-    # And the player
-    player.draw(screen)
+    display_graphics()
 
     # Update the screen
     pygame.display.flip()

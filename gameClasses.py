@@ -141,6 +141,52 @@ class Player(MySprite):
                     self.isGrounded = True
                     self.ySpeed = 0
 
+    def ground_pound(self, clock):
+        self.xSpeed = 0
+        self.ySpeed = 0
+
+        if self.orientation < 360:
+            self.internalTimer += clock.get_time()
+            if self.internalTimer > 0.02:
+                self.rotate(18)
+        else:
+            self.isSpinning = False
+            self.orientation = 0
+            self.image = self.orig_image
+            self.rect = self.image.get_rect(center=self.rect.center)
+            self.canGroundPound = False
+            self.ySpeed = 8
+            self.max_vertical_speed = 12
+
+    def decelerate(self):
+        if self.xSpeed > 0:
+            if self.isGrounded:
+                self.xSpeed -= 0.32  # It takes a little while to fully decelerate
+            else:
+                self.xSpeed -= 0.1
+
+            if self.xSpeed < 0:
+                self.xSpeed = 0
+
+        elif self.xSpeed < 0:
+            if self.isGrounded:
+                self.xSpeed += 0.32
+            else:
+                self.xSpeed += 0.1
+
+            if self.xSpeed > 0:
+                self.xSpeed = 0
+
+    def jump(self, highJump):
+        if self.isGrounded:
+            if highJump:
+                self.max_vertical_speed = 10
+            else:
+                self.max_vertical_speed = 7.5
+
+            self.ySpeed = -1 * self.max_vertical_speed
+            self.isGrounded = False
+
 class Enemy(MySprite):
     def __init__(self, size: tuple, colour, initialPos=(0, 0)):
         super().__init__(size, colour, initialPos)
