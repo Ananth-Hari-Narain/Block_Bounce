@@ -16,7 +16,8 @@ class MySprite(pygame.sprite.Sprite):
 
 class CollisionCharacter(MySprite):
     """
-    Characters with programmed collision
+    Characters with programmed collision. Gravity applies to them.
+    Their physics are the exact same as the main player
     """
     def __init__(self, size: tuple, colour, initialPos=(0, 0)):
         super().__init__(size, colour, initialPos)
@@ -245,62 +246,6 @@ class Player(CollisionCharacter):
             self.ySpeed = -1 * self.max_vertical_speed
             self.isGrounded = False
 
-class Platform(MySprite):
-    def __init__(self, size, colour, position, orientation=0):
-        super().__init__(size, colour, position)
-        self.orientation = orientation  # obsolete/ will not use (for now)
-
-        # Rotate the image of the platform and update the rectangle
-        # self.image = pygame.transform.rotozoom(self.image, -self.orientation, 1)
-        # self.rect = self.image.get_rect(center=self.rect.center)
-
-        # Top, left, right, bottom
-        self.sides: list = []
-
-        # Top left, top right, bottom left, bottom right
-        self.orig_corners = [
-            (-0.5 * self.rect.w, 0.5 * self.rect.h),
-            (0.5 * self.rect.w, 0.5 * self.rect.h),
-            (-0.5 * self.rect.w, -0.5 * self.rect.h),
-            (0.5 * self.rect.w, -0.5 * self.rect.h)
-        ]
-
-        self.set_sides()
-
-    def set_sides(self):
-        """
-        Identifies which corners are the top-left, top-right, etc.
-        Then it uses that data to set the top sides
-        """
-        new_corners = []
-
-        if self.orientation % 90 != 0:
-            # Formula:
-            # new_x = xcosθ - ysinθ
-            # new_y = xsinθ + ycosθ
-            for i in range(4):
-                x = (self.rect.centerx + (self.orig_corners[i][0] * cos(self.orientation))
-                     - (self.orig_corners[i][1] * sin(self.orientation)))
-                y = (self.rect.centery + (self.orig_corners[i][0]*sin(self.orientation))
-                     + (self.orig_corners[i][1] * cos(self.orientation)))
-                new_corners.append((x, y))
-
-            self.sides = [
-                (new_corners[0], new_corners[1]),
-                (new_corners[0], new_corners[2]),
-                (new_corners[1], new_corners[3]),
-                (new_corners[2], new_corners[3])
-            ]
-
-        else:
-            temp_rect = self.image.get_rect(center=self.rect.center)
-            self.sides = [
-                (temp_rect.topleft, temp_rect.topright),
-                (temp_rect.topleft, temp_rect.bottomleft),
-                (temp_rect.topright, temp_rect.bottomright),
-                (temp_rect.bottomright, temp_rect.bottomleft)
-            ]
-
 class Fool(CollisionCharacter):
     """
     This class is for the enemy called Fools.
@@ -359,27 +304,30 @@ class GhostPursuer(MySprite):
         pygame.draw.circle(self.image, (255, 0, 0, 50), (GHOST_RADIUS, GHOST_RADIUS), GHOST_RADIUS)
         self.collision_rect = self.rect.copy()
         self.collision_rect.scale_by_ip(0.8, 0.8)
+        self.floatingPointCenter: pygame.Vector2 = pygame.Vector2(self.rect.center)
+        self.MAX_SPEED = 2
 
     def update(self, player_position: tuple):
         # Calculate difference between x and difference between y
-        diff_in_x = player_position[0] - self.rect.centerx
-        diff_in_y = player_position[1] - self.rect.centery
+        diff_in_x: float = player_position[0] - self.rect.centerx
+        diff_in_y: float = player_position[1] - self.rect.centery
         translation = pygame.Vector2()
 
-        translation.x = diff_in_x // 20
-        if 1 < diff_in_x < 20:
-            translation.x = 1
-        elif -1 > diff_in_x > -20:
-            translation.x = -1
+        if diff_in_x != 0:
+            gradient = diff_in_y / diff_in_x
+            translation.update(1, gradient)
 
-        translation.y = diff_in_y // 20
-        if 1 < diff_in_y < 20:
-            translation.y = 1
-        elif -1 > diff_in_y > -20:
-            translation.y = -1
+        else:
+            translation.update(diff_in_x, diff_in_y)
 
-        self.rect.move_ip(translation)
-        self.collision_rect.move_ip(translation)
+        translation.scale_to_length(self.MAX_SPEED)
+
+        if player_position[0] < self.rect.centerx:
+            translation.update(-1 * translation.x, -1 * translation.y)
+
+        self.floatingPointCenter += translation
+        self.rect.center = round(self.floatingPointCenter.x), round(self.floatingPointCenter.y)
+        self.collision_rect.center = self.rect.center
 
 class JumpingFool(Fool):
     def __init__(self, initialPos):
@@ -390,6 +338,62 @@ class JumpingFool(Fool):
     def on_top_collision(self, *args, **kwargs):
         # Initiate jump again
         self.ySpeed = -8
+
+class Platform(MySprite):
+    def __init__(self, size, colour, position, orientation=0):
+        super().__init__(size, colour, position)
+        self.orientation = orientation  # obsolete/ will not use (for now)
+
+        # Rotate the image of the platform and update the rectangle
+        # self.image = pygame.transform.rotozoom(self.image, -self.orientation, 1)
+        # self.rect = self.image.get_rect(center=self.rect.center)
+
+        # Top, left, right, bottom
+        self.sides: list = []
+
+        # Top left, top right, bottom left, bottom right
+        self.orig_corners = [
+            (-0.5 * self.rect.w, 0.5 * self.rect.h),
+            (0.5 * self.rect.w, 0.5 * self.rect.h),
+            (-0.5 * self.rect.w, -0.5 * self.rect.h),
+            (0.5 * self.rect.w, -0.5 * self.rect.h)
+        ]
+
+        self.set_sides()
+
+    def set_sides(self):
+        """
+        Identifies which corners are the top-left, top-right, etc.
+        Then it uses that data to set the top sides
+        """
+        new_corners = []
+
+        if self.orientation % 90 != 0:
+            # Formula:
+            # new_x = xcosθ - ysinθ
+            # new_y = xsinθ + ycosθ
+            for i in range(4):
+                x = (self.rect.centerx + (self.orig_corners[i][0] * cos(self.orientation))
+                     - (self.orig_corners[i][1] * sin(self.orientation)))
+                y = (self.rect.centery + (self.orig_corners[i][0]*sin(self.orientation))
+                     + (self.orig_corners[i][1] * cos(self.orientation)))
+                new_corners.append((x, y))
+
+            self.sides = [
+                (new_corners[0], new_corners[1]),
+                (new_corners[0], new_corners[2]),
+                (new_corners[1], new_corners[3]),
+                (new_corners[2], new_corners[3])
+            ]
+
+        else:
+            temp_rect = self.image.get_rect(center=self.rect.center)
+            self.sides = [
+                (temp_rect.topleft, temp_rect.topright),
+                (temp_rect.topleft, temp_rect.bottomleft),
+                (temp_rect.topright, temp_rect.bottomright),
+                (temp_rect.bottomright, temp_rect.bottomleft)
+            ]
 
 
 class Spikes(Platform):
