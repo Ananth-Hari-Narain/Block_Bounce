@@ -1,5 +1,6 @@
-import math
+import struct
 
+import numpy as np
 import pygame
 from math import cos, sin
 
@@ -55,7 +56,7 @@ class CollisionCharacter(MySprite):
     def on_spike_collision(self, *args, **kwargs):
         pass
 
-    def collision_update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms):
+    def collision_update(self, all_platforms, all_semi_solid_platforms):
         if (self.rect.collidelist([obj.rect for obj in all_platforms]) == -1 and
                 self.rect.collidelist([obj.rect for obj in all_semi_solid_platforms]) == -1):
             self.isGrounded = False
@@ -124,7 +125,7 @@ class CollisionCharacter(MySprite):
                             self.on_spike_collision(isTopSide=i == 0, platform=obj)
 
             # See if character player is colliding with a moving platform
-            if obj in all_moving_platforms:
+            if type(obj) is MovingPlatform:
                 # Check if character is 1 pixel above platform
                 if self.rect.colliderect(obj.movement_rect):
                     self.rect.move_ip(obj.velocity)
@@ -253,6 +254,8 @@ class Fool(CollisionCharacter):
     They will also NOT target the player but will damage the player if the player walks into them
     If the player jumps on them (the bottom left of the player is above their centre), they will be squished
     """
+    character_code = "0"
+
     def __init__(self, initialPos):
         super().__init__((20, 20), (255, 0, 0), initialPos)
         self.MAX_VERTICAL_SPEED = 7.5  # Allows Fool to accelerate downwards (not necessary for all enemies)
@@ -282,13 +285,13 @@ class Fool(CollisionCharacter):
     def on_right_collision(self, *args, **kwargs):
         self.xSpeed = 2
 
-    def update(self, all_platforms, all_semi_solid_platforms, all_moving_platforms) -> None:
+    def update(self, all_platforms, all_semi_solid_platforms) -> None:
         """
         This is a simple function that contains the main logic of the Fool
         but does not include interactions with the player (that's in main.py)
         """
         self.rect.move_ip(self.xSpeed, self.ySpeed)
-        self.collision_update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+        self.collision_update(all_platforms, all_semi_solid_platforms)
 
 class GhostPursuer(MySprite):
     """
@@ -297,6 +300,8 @@ class GhostPursuer(MySprite):
     They do not interact with other enemies.
     When they damage the player, they disappear
     """
+    character_code = "1"
+
     def __init__(self, initialPos):
         # The ghost starts fully transparent
         GHOST_RADIUS = 10
@@ -305,7 +310,7 @@ class GhostPursuer(MySprite):
         self.collision_rect = self.rect.copy()
         self.collision_rect.scale_by_ip(0.8, 0.8)
         self.floatingPointCenter: pygame.Vector2 = pygame.Vector2(self.rect.center)
-        self.MAX_SPEED = 2
+        self.MAX_SPEED = 1.7
 
     def update(self, player_position: tuple):
         # Calculate difference between x and difference between y
@@ -320,7 +325,8 @@ class GhostPursuer(MySprite):
         else:
             translation.update(diff_in_x, diff_in_y)
 
-        translation.scale_to_length(self.MAX_SPEED)
+        if translation.length_squared() != 0:
+            translation.scale_to_length(self.MAX_SPEED)
 
         if player_position[0] < self.rect.centerx:
             translation.update(-1 * translation.x, -1 * translation.y)
@@ -330,6 +336,8 @@ class GhostPursuer(MySprite):
         self.collision_rect.center = self.rect.center
 
 class JumpingFool(Fool):
+    character_code = "2"
+
     def __init__(self, initialPos):
         super().__init__(initialPos)
         self.isBeingSquished = False  # Might add squishing later or remove it entirely
@@ -340,6 +348,8 @@ class JumpingFool(Fool):
         self.ySpeed = -8
 
 class Platform(MySprite):
+    code = "0"
+
     def __init__(self, size, colour, position, orientation=0):
         super().__init__(size, colour, position)
         self.orientation = orientation  # obsolete/ will not use (for now)
@@ -401,6 +411,8 @@ class Spikes(Platform):
     This is a stationary enemy that is a literally just a platform that damages the player
     Spikes are drawn in triangles. Each triangle will have a fixed width of 10
     """
+    code = "1"
+
     def __init__(self, noTriangles, height, position: tuple, orientation):
         """
         :param noTriangles: The number of triangles long
@@ -495,15 +507,19 @@ class SemiSolidPlatform(MySprite):
     This class is used to represent platforms that only have one way collision:
     you can enter from the bottom and land on the top
     """
+
+    code = "2"
+
     def __init__(self, size, position):
         super().__init__(size, (255, 0, 255), position)
         self.top_side = (self.rect.topleft, self.rect.topright)
+        self.orientation = 0
 
 
 class MovingPlatform(Platform):
     def __init__(self, size, colour, start_point: tuple[int, int], end_point: tuple[int, int]):
         super().__init__(size, colour, start_point)
-        self.rect.center = start_point
+        self.rect.topleft = start_point
         self.set_sides()
 
         # The below field is used to ensure the player moves with the platform
@@ -512,7 +528,7 @@ class MovingPlatform(Platform):
         self.movement_rect.height = 1
         self.movement_rect.width -= 2
         self.movement_rect.topleft = (self.rect.left + 1, self.rect.top - 1)
-
+        self.orientation = 0  # may add sloped platforms later
         self.internal_timer = 0
         self.path = (start_point, end_point)
         self.dest = 0
@@ -520,7 +536,7 @@ class MovingPlatform(Platform):
 
     def update(self, clock: pygame.time.Clock):
         # Check if the platform has arrived at its destination
-        if self.rect.center == self.path[self.dest]:
+        if self.rect.topleft == self.path[self.dest]:
             # Set the timer and new destination
             self.internal_timer = 3000
             self.velocity.update((0, 0))
@@ -532,19 +548,19 @@ class MovingPlatform(Platform):
             if self.internal_timer <= 0:
                 self.internal_timer = 0
                 # Set the velocities of the platform
-                if self.rect.centerx < self.path[self.dest][0]:
+                if self.rect.left < self.path[self.dest][0]:
                     self.velocity.x = 1
 
-                elif self.rect.centerx == self.path[self.dest][0]:
+                elif self.rect.left == self.path[self.dest][0]:
                     self.velocity.x = 0
 
                 else:
                     self.velocity.x = -1
 
-                if self.rect.centery < self.path[self.dest][1]:
+                if self.rect.top < self.path[self.dest][1]:
                     self.velocity.y = 1
 
-                elif self.rect.centery == self.path[self.dest][1]:
+                elif self.rect.top == self.path[self.dest][1]:
                     self.velocity.y = 0
 
                 else:
@@ -555,3 +571,148 @@ class MovingPlatform(Platform):
             self.rect.move_ip(self.velocity)
             self.movement_rect.move_ip(self.velocity)
             self.set_sides()
+
+
+class GameLevel:
+    """
+    This class represents a full level, and all the data associated with it.
+    """
+    def __init__(self, filePath):
+        """
+        Takes a set of text or binary data (haven't decided which to do yet) extracted from a file.
+        It then unpacks the data and stores it accordingly
+        :param filePath: a string that is the path to the file
+        """
+
+
+        self.all_platforms = [Spikes(8, 20, (150, 100), 0)]
+        self.all_semi_solid_platforms = []
+        self.all_enemies = pygame.sprite.Group()
+        self.respawn_point: tuple = (0, 0)
+        self.objectiveType = 0  # Not used for now
+
+        # Time to read the file
+        with open(filePath, "rt") as file:
+            split_data = file.readline().split()
+            self.respawn_point = (int(split_data[0]), int(split_data[1]))
+            self.objectiveType = int(split_data[2])
+            noEnemies = int(split_data[3])
+            noPlatforms = int(split_data[4])
+
+            # Record enemy data
+            for i in range(noEnemies):
+                split_data = file.readline().split()
+
+                if int(split_data[0]) == 0:
+                    # Record fool data
+                    self.all_enemies.add(Fool((int(split_data[1]), int(split_data[2]))))
+
+                elif int(split_data[0]) == 1:
+                    # Record ghost pursuer
+                    self.all_enemies.add(GhostPursuer((int(split_data[1]), int(split_data[2]))))
+
+                elif int(split_data[0]) == 2:
+                    # Record jumping fool
+                    self.all_enemies.add(JumpingFool((int(split_data[1]), int(split_data[2]))))
+
+            # Record platform data
+            for i in range(noPlatforms):
+                # Split the data up
+                split_data = file.readline().split()
+                if split_data[0] == "00":
+                    # We are dealing with a stationary solid platform
+                    self.all_platforms.append(
+                        Platform(size=(int(split_data[1]), int(split_data[2])),
+                                 colour=(0, 255, 0),
+                                 orientation=int(split_data[3]),
+                                 position=(int(split_data[4]), int(split_data[5]))
+                                 )
+                    )
+
+                elif split_data[0] == "10":
+                    # We are dealing with spikes
+                    # Calculate the number of triangles
+                    noTriangles = int(split_data[1])/20
+                    self.all_platforms.append(
+                        Spikes(noTriangles=noTriangles,
+                               height=int(split_data[2]),
+                               orientation=int(split_data[3]),
+                               position=(int(split_data[4]), int(split_data[5]))
+                               )
+                    )
+
+
+                elif split_data[0] == "20":
+                    # We are dealing with a stationary semi-solid platform
+                    self.all_semi_solid_platforms.append(
+                        SemiSolidPlatform(size=(int(split_data[1]), int(split_data[2])),
+                                          position=(int(split_data[4]), int(split_data[5]))
+                                          )
+                    )
+                elif split_data[0] == "01":
+                    # We are dealing with a moving solid platform
+                    platform = MovingPlatform(
+                            size=(int(split_data[1]), int(split_data[2])),
+                            colour=(0, 255, 0),
+                            start_point=(int(split_data[4]), int(split_data[5])),
+                            end_point=(int(split_data[6]), int(split_data[7]))
+                                 )
+                    self.all_platforms.append(platform)
+
+
+    def to_file(self, filePath) -> None:
+        """
+        Transforms level data into a file format. This is useful for a potential level
+        creator in the future
+        :param filePath: A string that is the path to the file, including the file name
+        """
+
+        # Format of file:
+        # Metadata: respawn point (2), objective (1), no enemies (1), no platforms (1)
+        # Enemies: type, initial position, etc.
+        # Platforms: Type (solid, spikes, or semisolid), isMoving, width, height,
+        # orientation, startPos, endPos (if moving)
+
+        with open(filePath, "wt") as myFile:
+            # METADATA
+            myFile.write(str(self.respawn_point[0]) + " ")
+            myFile.write(str(self.respawn_point[1]) + " ")
+            myFile.write(str(self.objectiveType) + " ")
+            myFile.write(str(len(self.all_enemies)) + " ")
+            noPlatforms = len(self.all_platforms) + len(self.all_semi_solid_platforms)
+            myFile.write(str(noPlatforms) + "\n")
+
+            # Enemy data (just enemy type + initialPos)
+            for enemy in self.all_enemies:
+                # Write the enemy type (already in bytes)
+                myFile.write(enemy.character_code + " ")
+                # Write the enemy data here
+                # For now, all enemies just have an initial position
+                myFile.write(str(enemy.rect.left) + " ")
+                myFile.write(str(enemy.rect.top) + "\n")
+
+            # Platform data
+            for platform in self.all_platforms + self.all_semi_solid_platforms:
+                # There is no space after platform code on purpose
+                myFile.write(platform.code)
+
+
+                # Determine whether the platform is moving or not
+                isMoving = type(platform) is MovingPlatform
+                myFile.write(str(int(isMoving)) + " ")
+
+                # Write the dimensions, orientation and starting position
+                myFile.write(str(platform.rect.width) + " " + str(platform.rect.height) + " ")
+                myFile.write(str(platform.orientation) + " ")
+                myFile.write(str(platform.rect.left) + " " + str(platform.rect.top) + " ")
+
+                if isMoving:
+                    # Write the end positions of the platforms as well
+                    myFile.write(str(platform.path[1][0]) + " " +
+                                 str(platform.path[1][1]) + "\n")
+
+                else:
+                    # If it is not finished
+                    myFile.write("\n")
+
+

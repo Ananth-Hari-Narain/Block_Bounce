@@ -29,10 +29,10 @@ platform4 = SemiSolidPlatform((80, 10), (60, 210))
 
 spikes = Spikes(8, 20, (150, 100), 0)
 
-fool1 = JumpingFool((200, 300))
+fool1 = JumpingFool((180, 101))
 pursuer1 = GhostPursuer((10, 90))
 all_enemies = pygame.sprite.Group()
-all_enemies.add(fool1, pursuer1)
+all_enemies.add(pursuer1, fool1)
 
 respawn_point = (60, 100)
 
@@ -41,18 +41,23 @@ playerHealthIcon = pygame.transform.scale(player.image, (15, 15))
 # Using lists for all_platforms in order to avoid having to create MULTIPLE variables
 all_platforms = [platform, spikes, platform3, wall, wall2]
 all_semi_solid_platforms = [platform4]
-all_moving_platforms = [platform3]
 
 clock = pygame.time.Clock()
 
 game_is_running = True
+level = GameLevel("level.gdt")
+level.to_file("level.gdt")
+
+# all_platforms = level.all_platforms
+# all_semi_solid_platforms = level.all_semi_solid_platforms
+# all_enemies = level.all_enemies
 
 def enemy_logic():
     for enemy in all_enemies:
         if type(enemy) is Fool or type(enemy) is JumpingFool:
             # Logic for fools - check the fool class
             if not enemy.isBeingSquished:
-                enemy.update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+                enemy.update(all_platforms, all_semi_solid_platforms)
 
                 # Check for collision with player
                 if enemy.rect.colliderect(player.rect):
@@ -172,10 +177,11 @@ while game_is_running:
     enemy_logic()
 
     #### Collision detection ####
-    player.collision_update(all_platforms, all_semi_solid_platforms, all_moving_platforms)
+    player.collision_update(all_platforms, all_semi_solid_platforms)
 
-    for obj in all_moving_platforms:
-        obj.update(clock)
+    for obj in all_platforms:
+        if type(obj) is MovingPlatform:
+            obj.update(clock)
 
     display_graphics()
 
