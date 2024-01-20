@@ -145,9 +145,10 @@ class CollisionCharacter(MySprite):
             # If there is a collision
             if clipped:
                 # Check if the character was above the platform on the previous frame
-                if self.rect.bottomleft[1] - self.ySpeed <= obj.top_side[0][1]:
-                    self.rect.y += obj.top_side[0][1] - self.rect.bottomleft[1]
-                    self.float_pos.y += obj.top_side[0][1] - self.rect.bottomleft[1]
+                if self.rect.bottomleft[1] - self.ySpeed <= obj.top_side[0][1]+1:
+                    diff_in_y_coord = obj.top_side[0][1] - self.rect.bottomleft[1]
+                    self.rect.y += diff_in_y_coord
+                    self.float_pos.y += diff_in_y_coord
                     self.isGrounded = True
                     self.ySpeed = 0
                     self.on_top_collision()
@@ -277,9 +278,11 @@ class Fool(CollisionCharacter):
         """
         This function is to be used iteratively (i.e. multiple times)
         """
-        self.image = pygame.transform.scale(self.image, (1, 0.5))
-        self.rect.height /= 2
-        if self.rect.height < 1:
+        bottom = self.rect.bottom
+        self.rect.height *= 0.5
+        self.image = pygame.transform.scale_by(self.image, (1, 0.5))
+        self.rect.bottom = bottom
+        if self.rect.height <= 1:
             # Once the enemy is "dead", it is removed from all the groups
             self.kill()
 

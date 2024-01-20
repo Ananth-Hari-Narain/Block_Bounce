@@ -38,19 +38,14 @@ respawn_point = (60, 100)
 
 playerHealthIcon = pygame.transform.scale(player.image, (15, 15))
 
-# Using lists for all_platforms in order to avoid having to create MULTIPLE variables
-all_platforms = [platform, spikes, platform3, wall, wall2]
-all_semi_solid_platforms = [platform4]
-
 clock = pygame.time.Clock()
 
 game_is_running = True
-level = GameLevel("level.gdt")
-level.to_file("level.gdt")
+level1 = GameLevel("level.gdt")
 
-# all_platforms = level.all_platforms
-# all_semi_solid_platforms = level.all_semi_solid_platforms
-# all_enemies = level.all_enemies
+all_platforms = level1.all_platforms
+all_semi_solid_platforms = level1.all_semi_solid_platforms
+all_enemies = level1.all_enemies
 
 def enemy_logic():
     for enemy in all_enemies:
@@ -65,6 +60,7 @@ def enemy_logic():
                     # If the player is above the enemy's centre
                     if player.rect.bottomleft[1] <= enemy.rect.centery and player.ySpeed > 0:
                         enemy.isBeingSquished = True
+                        player.ySpeed = -5
                         if type(enemy) is JumpingFool:
                             enemy.kill()
 
@@ -74,7 +70,7 @@ def enemy_logic():
             else:
                 if type(enemy) is Fool:
                     enemy.internal_timer += clock.get_time()
-                    if enemy.internal_timer >= 0.15:
+                    if enemy.internal_timer >= 20:
                         enemy.become_squished()
                         enemy.internal_timer = 0
 
@@ -121,8 +117,7 @@ while game_is_running:
                     player.isSpinning = True
                     player.rotate(3.6)
             elif event.key == K_0:
-                pass
-                # FPS = 61 - FPS
+                pygame.display.toggle_fullscreen()
 
 
     #### Player controls ####
@@ -155,15 +150,17 @@ while game_is_running:
 
     # Prevents the player moving off-screen
     if player.rect.x > SCREENWIDTH - player.rect.width:
-        player.rect.x = SCREENWIDTH - player.rect.width
+        player.float_pos.x = SCREENWIDTH - player.rect.width
         player.xSpeed = 0
     elif player.rect.x < 0:
-        player.rect.x = 0
+        player.float_pos.x = 0
         player.xSpeed = 0
 
     # Respawn player
     if player.rect.y > SCREENHEIGHT:
         player.rect.topleft = respawn_point
+        player.float_pos.x = player.rect.centerx
+        player.float_pos.y = player.rect.centery
         player.take_damage()
 
 
@@ -171,7 +168,10 @@ while game_is_running:
         player.ground_pound(clock)
 
 
-    player.rect.move_ip(player.xSpeed, player.ySpeed)
+    player.float_pos.x += player.xSpeed
+    player.float_pos.y += player.ySpeed
+    player.rect.x = round(player.float_pos.x)
+    player.rect.y = round(player.float_pos.y)
 
     #### Enemy logic ####
     enemy_logic()
