@@ -24,6 +24,7 @@ class CollisionCharacter(MySprite):
         super().__init__(size, colour, initialPos)
         self.xSpeed = 1
         self.ySpeed = 0
+        self.float_pos = pygame.Vector2(self.rect.center)
         self.isGrounded: bool = False
 
     def fall(self, *args, **kwargs):
@@ -72,6 +73,8 @@ class CollisionCharacter(MySprite):
             # (away from the edge)
             for i in range(4):
                 clipped = self.rect.clipline(obj.sides[i])
+                self.rect.x = round(self.float_pos.x)
+                self.rect.y = round(self.float_pos.y)
 
                 if clipped:
                     # Checking collision with top side of platform (the floor for the character)
@@ -89,6 +92,7 @@ class CollisionCharacter(MySprite):
                             diff_in_y_coord = 0
 
                         self.rect.move_ip(0, -diff_in_y_coord)
+                        self.float_pos.y += -diff_in_y_coord
 
 
                     # Checking collision with left side of platform
@@ -99,6 +103,7 @@ class CollisionCharacter(MySprite):
                                 and self.rect.top < obj.rect.bottom - 3):
                             diff_in_x_coord = self.rect.topright[0] - clipped[0][0]
                             self.rect.move_ip(-diff_in_x_coord - 1, 0)
+                            self.float_pos.x += -diff_in_x_coord - 1
                             self.xSpeed = 0
                             self.on_left_collision()
 
@@ -109,6 +114,7 @@ class CollisionCharacter(MySprite):
                                 and self.rect.top < obj.rect.bottom - 3):
                             diff_in_x_coord = self.rect.topleft[0] - clipped[0][0]
                             self.rect.move_ip(-diff_in_x_coord + 1, 0)
+                            self.float_pos.x += -diff_in_x_coord + 1
                             self.xSpeed = 0
                             self.on_right_collision()
 
@@ -117,6 +123,7 @@ class CollisionCharacter(MySprite):
                         self.ySpeed = 0
                         diff_in_y_coord = clipped[0][1] - self.rect.topright[1]
                         self.rect.move_ip(0, diff_in_y_coord + 2)
+                        self.float_pos.y += diff_in_y_coord + 2
                         self.on_bottom_collision()
 
                     # Deal with spikes for the character
@@ -129,6 +136,7 @@ class CollisionCharacter(MySprite):
                 # Check if character is 1 pixel above platform
                 if self.rect.colliderect(obj.movement_rect):
                     self.rect.move_ip(obj.velocity)
+                    self.float_pos += obj.velocity
 
 
         # This is the collision detection algorithm for a character with semi-solid platforms
@@ -139,6 +147,7 @@ class CollisionCharacter(MySprite):
                 # Check if the character was above the platform on the previous frame
                 if self.rect.bottomleft[1] - self.ySpeed <= obj.top_side[0][1]:
                     self.rect.y += obj.top_side[0][1] - self.rect.bottomleft[1]
+                    self.float_pos.y += obj.top_side[0][1] - self.rect.bottomleft[1]
                     self.isGrounded = True
                     self.ySpeed = 0
                     self.on_top_collision()
@@ -290,7 +299,8 @@ class Fool(CollisionCharacter):
         This is a simple function that contains the main logic of the Fool
         but does not include interactions with the player (that's in main.py)
         """
-        self.rect.move_ip(self.xSpeed, self.ySpeed)
+        self.float_pos.x += self.xSpeed
+        self.float_pos.y += self.ySpeed
         self.collision_update(all_platforms, all_semi_solid_platforms)
 
 class GhostPursuer(MySprite):
@@ -632,7 +642,7 @@ class GameLevel:
                 elif split_data[0] == "10":
                     # We are dealing with spikes
                     # Calculate the number of triangles
-                    noTriangles = int(split_data[1])/20
+                    noTriangles = int(int(split_data[1])/20)
                     self.all_platforms.append(
                         Spikes(noTriangles=noTriangles,
                                height=int(split_data[2]),
